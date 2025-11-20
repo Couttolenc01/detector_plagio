@@ -81,17 +81,6 @@ pip install -r requirements.txt
 
 ⸻
 
-5️⃣ (Opcional) Crear un archivo .env si deseas usar API
-
-touch .env
-
-Y dentro escribir:
-
-OPENAI_API_KEY=TU_API_KEY
-
-
-⸻
-
 6️⃣ Construir dataset desde archivos .txt
 
 Este archivo genera automáticamente dataset_plagio_archivos.csv leyendo tus textos.
