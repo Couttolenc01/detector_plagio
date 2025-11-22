@@ -1,80 +1,59 @@
 import streamlit as st
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+import joblib
 
-# -------------------------------------------------
-#  Cargar modelo SOLO una vez (se cachea)
-# -------------------------------------------------
+# --------------------------
+# Cargar modelos
+# --------------------------
 @st.cache_resource
-def load_model():
-    # Puedes usar el mismo que ya usaste:
-    return SentenceTransformer("sentence-transformers/all-roberta-large-v1")
-    # Si quieres algo más ligero:
-    # return SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
+def load_models():
+    encoder = SentenceTransformer("sentence-transformers/all-roberta-large-v1")
+    clf = joblib.load("modelo_plagio.pkl")
+    le = joblib.load("label_encoder.pkl")
+    return encoder, clf, le
 
-model = load_model()
+encoder, clf, le = load_models()
 
-# -------------------------------------------------
-#  Función para calcular similitud
-# -------------------------------------------------
-def calcular_similitud(texto_a: str, texto_b: str) -> float:
-    emb_a = model.encode([texto_a])[0]
-    emb_b = model.encode([texto_b])[0]
+# --------------------------
+# Predicción de plagio
+# --------------------------
+def predecir_plagio(texto_a, texto_b):
+    emb_a = encoder.encode([texto_a])[0]
+    emb_b = encoder.encode([texto_b])[0]
+
     sim = cosine_similarity([emb_a], [emb_b])[0][0]
-    return sim
+    porcentaje = sim * 100
 
-def clasificar_plagio(sim: float) -> str:
-    if sim >= 0.85:
-        return "Plagio ALTO"
-    elif sim >= 0.70:
-        return "Plagio MODERADO"
-    elif sim >= 0.55:
-        return "Plagio LEVE"
-    else:
-        return "No se detecta plagio"
+    len_ratio = len(texto_a) / max(len(texto_b), 1)
 
-# -------------------------------------------------
-#  Interfaz Streamlit
-# -------------------------------------------------
+    X = [[sim, len_ratio]]
+    clase_idx = clf.predict(X)[0]
+    etiqueta = le.inverse_transform([clase_idx])[0]
+
+    return porcentaje, etiqueta
+
+# --------------------------
+# Interfaz
+# --------------------------
 st.set_page_config(page_title="Detector de Plagio", page_icon="🧠")
-
-st.title("🧠 Detector de Plagio con Embeddings Semánticos")
-st.write(
-    "Ingresa un **texto original** y un **texto sospechoso**. "
-    "El sistema calcula la similitud semántica usando un modelo tipo BERT/RoBERTa."
-)
+st.title("🧠 Detector de Plagio")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    texto_original = st.text_area(
-        "Texto original",
-        height=250,
-        placeholder="Pega aquí el texto original...",
-    )
+    texto_original = st.text_area("Texto original", height=250)
 
 with col2:
-    texto_plagiado = st.text_area(
-        "Texto sospechoso",
-        height=250,
-        placeholder="Pega aquí el texto que quieres analizar...",
-    )
+    texto_plagiado = st.text_area("Texto sospechoso", height=250)
 
 if st.button("🔍 Analizar plagio"):
     if not texto_original.strip() or not texto_plagiado.strip():
-        st.error("Por favor ingresa ambos textos.")
+        st.error("Ingresa ambos textos.")
     else:
-        with st.spinner("Calculando similitud..."):
-            sim = calcular_similitud(texto_original, texto_plagiado)
-            porcentaje = sim * 100
-            nivel = clasificar_plagio(sim)
+        with st.spinner("Analizando..."):
+            porcentaje, nivel = predecir_plagio(texto_original, texto_plagiado)
 
         st.subheader("Resultados")
-        st.metric("Similitud", f"{porcentaje:.2f}%")
+        st.metric("Similitud semántica", f"{porcentaje:.2f}%")
         st.write(f"**Nivel estimado:** {nivel}")
-
-        # Explicación rápida
-        st.caption(
-            "Umbrales usados: ≥ 0.85 plagio alto, 0.70–0.85 plagio moderado, "
-            "0.55–0.70 plagio leve, < 0.55 no plagio."
-        )
