@@ -1,51 +1,50 @@
 import pandas as pd
 from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import classification_report
 import joblib
 
-# 1. Cargar dataset
-df = pd.read_csv("dataset_plagio_manual.csv")
-print("Registros en dataset:", len(df))
+DATASET = "data/dataset_plagio_manual.csv"
 
-# 2. Cargar modelo de embeddings
-encoder = SentenceTransformer("sentence-transformers/all-roberta-large-v1")
+def main():
+    print("Cargando dataset...")
+    df = pd.read_csv(DATASET)
 
-# 3. Calcular embeddings y similitud
-emb_A = encoder.encode(df["texto_A"].tolist())
-emb_B = encoder.encode(df["texto_B"].tolist())
+    print("Columnas detectadas:", df.columns.tolist())
 
-sims = []
-for a, b in zip(emb_A, emb_B):
-    sims.append(cosine_similarity([a], [b])[0][0])
+    # Validar columnas correctas
+    if not {"original", "texto", "label"}.issubset(df.columns):
+        raise ValueError("El dataset debe tener columnas: original, texto, label")
 
-df["sim_coseno"] = sims
+    # Combinar los textos como entrada
+    X_raw = df["original"] + " " + df["texto"]
+    y = df["label"]
 
-# 4. Feature adicional
-df["len_ratio"] = df["texto_A"].str.len() / df["texto_B"].str.len()
+    print("Cargando encoder...")
+    encoder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
-# 5. Features y etiquetas
-X = df[["sim_coseno", "len_ratio"]]
+    print("Generando embeddings (tarda un poco)...")
+    X_embeddings = encoder.encode(X_raw.tolist(), show_progress_bar=True)
 
-le = LabelEncoder()
-y = le.fit_transform(df["etiqueta"])
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_embeddings, y, test_size=0.2, random_state=42, stratify=y
+    )
 
-# 6. Train/test split
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.3, random_state=42
-)
+    clf = LogisticRegression(max_iter=2000)
+    
+    print("Entrenando clasificador...")
+    clf.fit(X_train, y_train)
 
-# 7. Entrenar modelo
-clf = LogisticRegression()
-clf.fit(X_train, y_train)
+    print("\nEvaluación del modelo:\n")
+    preds = clf.predict(X_test)
+    print(classification_report(y_test, preds))
 
-print("Accuracy en test:", clf.score(X_test, y_test))
+    print("Guardando modelos...")
+    joblib.dump(encoder, "encoder_plagio.pkl")
+    joblib.dump(clf, "modelo_plagio.pkl")
 
-# 8. Guardar modelos
-joblib.dump(clf, "modelo_plagio.pkl")
-joblib.dump(le, "label_encoder.pkl")
+    print("Modelo entrenado y guardado correctamente ✔️")
 
-print("Modelo guardado como modelo_plagio.pkl")
-print("LabelEncoder guardado como label_encoder.pkl")
+if __name__ == "__main__":
+    main()

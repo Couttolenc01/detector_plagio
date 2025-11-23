@@ -1,30 +1,27 @@
 import pandas as pd
 from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+import joblib
 
-# 1. Cargar dataset
-df = pd.read_csv("dataset_plagio_manual.csv")
+DATASET = "dataset_clough.csv"
+OUTPUT_EMB = "embeddings_clough.pkl"
 
-# 2. Modelo de embeddings (RoBERTa)
-model = SentenceTransformer("sentence-transformers/all-roberta-large-v1")
+def main():
+    df = pd.read_csv(DATASET)
 
-# 3. Extraer textos
-textos_A = df["texto_A"].tolist()
-textos_B = df["texto_B"].tolist()
+    model = SentenceTransformer("sentence-transformers/all-roberta-large-v1")
 
-# 4. Obtener embeddings
-emb_A = model.encode(textos_A)
-emb_B = model.encode(textos_B)
+    emb1 = model.encode(df["texto1"].tolist(), convert_to_numpy=True, show_progress_bar=True)
+    emb2 = model.encode(df["texto2"].tolist(), convert_to_numpy=True, show_progress_bar=True)
 
-# 5. Calcular similitud coseno
-sims = []
-for a, b in zip(emb_A, emb_B):
-    sims.append(cosine_similarity([a], [b])[0][0])
+    data = {
+        "embeddings1": emb1,
+        "embeddings2": emb2,
+        "labels": df["label"].tolist()
+    }
 
-df["sim_coseno"] = sims
+    joblib.dump(data, OUTPUT_EMB)
+    print("Embeddings generados:", OUTPUT_EMB)
 
-# 6. Guardar resultado
-df.to_csv("resultado_similitud.csv", index=False, encoding="utf-8")
-
-print("Similitud calculada. Archivo: resultado_similitud.csv\n")
-print(df[["tipo_par", "etiqueta", "sim_coseno"]])
+if __name__ == "__main__":
+    main()
