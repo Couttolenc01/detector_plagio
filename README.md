@@ -1,125 +1,128 @@
-🧠 Detector de Plagio con Embeddings Semánticos (BERT / RoBERTa)
+# 🧠 Detector de Plagio con Embeddings y Clasificación Supervisada
 
-Este proyecto implementa un sistema de detección de similitud entre textos utilizando embeddings semánticos generados por modelos avanzados como RoBERTa (vía sentence-transformers).
+Este proyecto implementa un **detector de plagio de texto** 
+El sistema analiza dos textos y clasifica el nivel de plagio en una de tres categorías:
 
-El objetivo es identificar distintos niveles de plagio incluso cuando existe paráfrasis moderada o fuerte, algo que técnicas tradicionales como TF-IDF no pueden lograr.
+- `plagio_alto`
+- `plagio_leve`
+- `no_plagio`  
+  *(incluye casos de “ruido”, donde los textos no tienen ninguna relación entre sí)*
 
-El sistema permite cargar textos desde archivos .txt, generar un dataset dinámico y calcular similitud entre pares de textos mediante cosine similarity.
+El proyecto también incluye una **interfaz web basada en Streamlit** para facilitar su uso.
 
-⸻
+---
 
-🚀 Funcionalidades principales
-	•	Lectura dinámica de múltiples archivos .txt desde una carpeta.
-	•	Construcción automática de un dataset a partir de un archivo pares_textos.csv.
-	•	Generación de embeddings semánticos usando RoBERTa Large.
-	•	Cálculo de similitud con cosine similarity.
-	•	Clasificación conceptual de los niveles de plagio:
-	•	🔴 Plagio alto (0.85 – 1.00)
-	•	🟠 Plagio moderado (0.70 – 0.85)
-	•	🟡 Plagio leve (0.55 – 0.70)
-	•	🟢 No plagio (0.00 – 0.45)
-	•	Exportación de resultados a CSV.
+## ⚙️ ¿Cómo funciona el modelo?
 
-⸻
+El pipeline del sistema tiene cuatro etapas principales:
 
-📦 Estructura del proyecto
+### 1️⃣ Embeddings semánticos (RoBERTa / BERT)
 
-detector_plagio/
-├── textos/                        # Carpeta con archivos .txt
-├── pares_textos.csv               # Define qué archivos se comparan entre sí
-├── construir_dataset_desde_archivos.py
-├── calcular_similitud_bert.py
-├── dataset_manual.py              # (Opcional) Dataset estático para pruebas
-├── resultado_similitud_archivos.csv
-├── resultado_similitud.csv
-├── requirements.txt
-└── README.md
+Cada texto se convierte en un vector numérico utilizando:
+SentenceTransformer(“sentence-transformers/all-roberta-large-v1”)
 
+Estos embeddings capturan el **significado** del texto y permiten comparar semánticamente dos oraciones o párrafos completos.
 
-⸻
+La similitud entre ambos embeddings se calcula usando la **similitud coseno**, que indica qué tan parecidos son los textos a nivel de significado.
 
-🛠 Instalación y ejecución
+---
 
-1️⃣ Clonar el repositorio
+### 2️⃣ Features utilizadas para la clasificación
 
-git clone https://github.com/Couttolenc01/detector_plagio.git
-cd detector_plagio
+A partir de los textos y de sus embeddings, se calculan **5 features**:
 
+1. **sim_coseno**  
+   - Similitud entre embeddings.  
+   - Mientras más alto, más parecidos en significado.
 
-⸻
+2. **len_ratio**  
+   - Relación entre la longitud del texto A y B.  
+   - Útil para detectar cuando un texto es una versión recortada/parafraseada del otro.
 
-2️⃣ Crear un entorno virtual
+3. **diff_len_chars**  
+   - Diferencia absoluta en número de caracteres.
 
-macOS / Linux
+4. **diff_len_words**  
+   - Diferencia en número de palabras.
 
-python3 -m venv venv
+5. **jaccard_palabras**  
+   - Similaridad entre conjuntos de palabras.  
+   - Mide qué tantas palabras comparten.
 
-Windows
+Estas características juntas hacen que el modelo pueda identificar desde plagio literal hasta paráfrasis.
 
-python -m venv venv
+---
 
+### 3️⃣ Clasificador supervisado
 
-⸻
+Se utiliza un modelo de **Regresión Logística (LogisticRegression)** para clasificar los pares en:
 
-3️⃣ Activar el entorno virtual
+- `plagio_alto`
+- `plagio_leve`
+- `no_plagio`
 
-macOS / Linux
+El modelo entrena con los 5 features mencionados y con un conjunto balanceado de ejemplos reales y casos de “ruido”.
 
-source venv/bin/activate
+Los componentes entrenados se guardan como:
 
-Windows (PowerShell)
+- `modelo_plagio.pkl`
+- `label_encoder.pkl`
 
-venv\Scripts\activate
+---
 
+### 4️⃣ Interfaz web con Streamlit
 
-⸻
+La aplicación (`app.py`) permite:
 
-4️⃣ Instalar dependencias
+- Ingresar dos textos.
+- Analizar su similitud semántica.
+- Mostrar:
+  - Porcentaje aproximado de similitud.
+  - Clasificación final del nivel de plagio.
 
-pip install -r requirements.txt
+Se ejecuta con:
+streamlit run app.py
 
+---
 
-⸻
+## 📚 Dataset utilizado
 
-6️⃣ Construir dataset desde archivos .txt
+El dataset se encuentra en:
+dataset_plagio_manual.csv
 
-Este archivo genera automáticamente dataset_plagio_archivos.csv leyendo tus textos.
+Contiene **120 pares de textos**, distribuidos así:
 
-python construir_dataset_desde_archivos.py
+- **30** casos de `plagio_alto`
+- **30** casos de `plagio_leve`
+- **60** casos de `no_plagio`
 
+Dentro de los casos `no_plagio` se incluyen también ejemplos de **ruido**:  
+pares donde los textos NO tienen relación alguna.  
+Esto ayuda a que el modelo sea más robusto y no se confunda frente a textos arbitrarios.
 
-⸻
+Columnas del dataset:
 
-7️⃣ Calcular la similitud con embeddings BERT
+- `texto_A`
+- `texto_B`
+- `etiqueta`
 
-python calcular_similitud_bert.py
+---
 
-Los resultados aparecerán en:
+## 🖥️ Cómo correr el proyecto
 
-resultado_similitud_archivos.csv
+### 1️⃣ Clonar el repositorio
 
+```bash
+git clone <URL_DEL_REPOSITORIO>
+- cd detector_plagio
 
-⸻
+- python3 -m venv venv
+ source venv/bin/activate
 
-🧪 Ejemplo de salida
+- pip install -r requirements.txt
 
-  tipo_par       etiqueta          sim_coseno
-0 literal       plagio_alto        0.9400
-1 moderado      plagio_moderado    0.9149
-2 fuerte        plagio_leve        0.8508
-3 no_rel        no_plagio          0.3720
+- python train_clasificador.py
 
-La similitud se interpreta así:
-	•	0.94 → Plagio alto (casi igual)
-	•	0.91 → Plagio moderado (paráfrasis leve)
-	•	0.85 → Paráfrasis fuerte
-	•	0.37 → Textos no relacionados
+- python evaluar_modelo.py
 
-⸻
-
-🧠 ¿Cómo funciona este sistema?
-	1.	Embeddings semánticos: Convertimos cada texto en un vector de alta dimensión usando un modelo pre-entrenado (RoBERTa Large).
-	2.	Comparación vectorial: Medimos qué tan similares son los vectores mediante cosine similarity.
-	3.	Interpretación: Valores cercanos a 1.0 indican alta similitud; valores cercanos a 0.0 indican que los textos no se parecen.
-
-No se realiza entrenamiento propio: el sistema usa un modelo ya pre-entrenado en millones de pares de oraciones.
+- streamlit run app.py
