@@ -1,163 +1,140 @@
 import os
 import pandas as pd
+import glob
 
-# Rutas
+# Construcción de dataset_clough.csv desde los archivos
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data2")  # ← Cambié a data2
+DATA_DIR = os.path.join(BASE_DIR, "data2")
 INFO_FILE = os.path.join(DATA_DIR, "file_information.csv")
-OUTPUT_FILE = os.path.join(BASE_DIR, "dataset_clough.csv")
+OUTPUT_CLOUGH = os.path.join(BASE_DIR, "dataset_clough.csv")
+
 
 def load_file_text(filename):
-    """Carga el contenido de un archivo de texto"""
-    path = os.path.join(DATA_DIR, filename)
+    """Carga texto de un archivo"""
     try:
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        with open(os.path.join(DATA_DIR, filename), "r", encoding="utf-8", errors="ignore") as f:
             return f.read().strip()
-    except Exception as e:
-        print(f"Error leyendo {filename}: {e}")
+    except:
         return ""
 
-def main():
-    print("="*70)
-    print("📁 PREPARANDO DATASET (3 CATEGORÍAS)")
-    print("="*70)
-    
-    print(f"\n📂 Cargando {INFO_FILE}...")
+
+def build_clough_dataset():
+    print("Cargando archivo file_information.csv...")
     df_info = pd.read_csv(INFO_FILE)
-    
-    print(f"✅ {len(df_info)} archivos encontrados")
-    print(f"\n📊 Categorías:")
-    print(df_info['Category'].value_counts())
-    
-    # Verificar que solo haya las categorías esperadas
+    print(f"Archivos indexados: {len(df_info)}")
+
     categorias_validas = {'non', 'light', 'cut', 'orig'}
     categorias_encontradas = set(df_info['Category'].unique())
-    
+
     if not categorias_encontradas.issubset(categorias_validas):
-        print(f"\n⚠️  Categorías inesperadas: {categorias_encontradas - categorias_validas}")
-    
-    # Separar originales
+        print("Advertencia: hay categorías inesperadas en file_information.csv")
+
     originals = df_info[df_info['Category'] == 'orig'].copy()
-    print(f"\n📄 {len(originals)} documentos originales")
-    
+
     if len(originals) == 0:
-        print("\n⚠️  No se encontraron archivos originales (orig)")
-        print("    Buscando patrones orig_text*.txt...")
-        
-        # Buscar archivos que empiecen con orig_
-        import glob
+        print("No se encontraron archivos 'orig'. Buscando orig_*.txt...")
         orig_files = glob.glob(os.path.join(DATA_DIR, "orig_*.txt"))
-        
-        if orig_files:
-            print(f"✅ Encontrados {len(orig_files)} archivos orig_*")
-            # Crear DataFrame de originales manualmente
-            originals_data = []
-            for filepath in orig_files:
-                filename = os.path.basename(filepath)
-                # Extraer task del nombre (orig_text1.txt -> 1)
-                task_id = filename.replace("orig_text", "").replace(".txt", "")
-                originals_data.append({
-                    'File': filename,
-                    'Task': task_id,
-                    'Category': 'orig'
-                })
-            originals = pd.DataFrame(originals_data)
-            print(f"📋 Tasks identificados: {sorted(originals['Task'].unique())}")
-        else:
-            print("❌ No se encontraron archivos originales")
-            return
-    
+        originals_data = []
+
+        for filepath in orig_files:
+            filename = os.path.basename(filepath)
+            task_id = filename.replace("orig_text", "").replace(".txt", "")
+            originals_data.append({"File": filename, "Task": task_id, "Category": "orig"})
+
+        originals = pd.DataFrame(originals_data)
+
     dataset_rows = []
-    
+
     for _, orig_row in originals.iterrows():
-        task_id = str(orig_row['Task'])
-        orig_filename = orig_row['File']
+        task_id = str(orig_row["Task"])
+        orig_filename = orig_row["File"]
         orig_text = load_file_text(orig_filename)
-        
         if not orig_text:
-            print(f"  ⚠️  Texto vacío en {orig_filename}")
             continue
-        
-        # Encontrar todas las versiones de esta tarea
-        # Buscar archivos que empiecen con t{task_id}_
+
         pattern_prefix = f"t{task_id}_"
-        
         versiones = df_info[
-            (df_info['File'].str.startswith(pattern_prefix)) &
-            (df_info['Category'] != 'orig')
+            (df_info["File"].str.startswith(pattern_prefix)) &
+            (df_info["Category"] != "orig")
         ]
-        
-        print(f"\n📝 Task {task_id}: {len(versiones)} versiones")
-        print(f"   Original: {orig_filename} ({len(orig_text)} chars)")
-        
+
         for _, ver_row in versiones.iterrows():
-            ver_filename = ver_row['File']
+            ver_filename = ver_row["File"]
             ver_text = load_file_text(ver_filename)
-            ver_type = ver_row['Category']
-            
             if not ver_text:
-                print(f"    ⚠️  Texto vacío en {ver_filename}")
                 continue
-            
+
             dataset_rows.append({
                 "texto1": orig_text,
                 "texto2": ver_text,
-                "label": ver_type,
+                "label": ver_row["Category"],
                 "task": task_id,
                 "file_orig": orig_filename,
                 "file_plag": ver_filename
             })
-            
-            print(f"    ✅ {ver_type:5s}: {ver_filename} ({len(ver_text)} chars)")
-    
-    # Crear DataFrame
+
     df_dataset = pd.DataFrame(dataset_rows)
-    
-    print("\n" + "="*70)
-    print("📊 DATASET CREADO")
-    print("="*70)
-    print(f"   Total de pares: {len(df_dataset)}")
-    print(f"\n   Distribución por categoría:")
-    distribucion = df_dataset['label'].value_counts()
-    for label, count in distribucion.items():
-        print(f"      {label:6s}: {count:3d} pares")
-    
-    print(f"\n   Pares por task:")
-    pares_por_task = df_dataset.groupby('task').size()
-    for task, count in pares_por_task.items():
-        print(f"      Task {task}: {count} pares")
-    
-    # Guardar
-    df_dataset.to_csv(OUTPUT_FILE, index=False, encoding='utf-8')
-    print(f"\n✅ Dataset guardado en: {OUTPUT_FILE}")
-    
-    # Mostrar ejemplo
-    print("\n" + "="*70)
-    print("📋 EJEMPLO DE ENTRADA")
-    print("="*70)
-    if len(df_dataset) > 0:
-        ejemplo = df_dataset.iloc[0]
-        print(f"\nTask: {ejemplo['task']}")
-        print(f"Categoría: {ejemplo['label']}")
-        print(f"Archivo original: {ejemplo['file_orig']}")
-        print(f"Archivo comparado: {ejemplo['file_plag']}")
-        print(f"\nOriginal (primeros 150 chars):")
-        print(f"   {ejemplo['texto1'][:150]}...")
-        print(f"\nComparado (primeros 150 chars):")
-        print(f"   {ejemplo['texto2'][:150]}...")
-    
-    # Estadísticas de longitud
-    print("\n" + "="*70)
-    print("📏 ESTADÍSTICAS DE LONGITUD")
-    print("="*70)
-    for label in ['non', 'light', 'cut']:
-        subset = df_dataset[df_dataset['label'] == label]
-        if len(subset) > 0:
-            len_orig = subset['texto1'].str.len().mean()
-            len_comp = subset['texto2'].str.len().mean()
-            ratio = len_comp / len_orig if len_orig > 0 else 0
-            print(f"   {label:6s}: orig={len_orig:.0f} chars, comp={len_comp:.0f} chars, ratio={ratio:.2f}")
+    df_dataset.to_csv(OUTPUT_CLOUGH, index=False, encoding="utf-8")
+    print(f"dataset_clough.csv generado: {len(df_dataset)} pares")
+
+    return df_dataset
+
+# Fusión con dataset manual
+
+def merge_datasets():
+    print("Cargando dataset_clough.csv...")
+    df_clough = pd.read_csv("dataset_clough.csv")
+
+    print("Cargando dataset_plagio_manual.csv...")
+    df_manual = pd.read_csv("dataset_plagio_manual.csv")
+
+    print(f"Clough: {len(df_clough)} pares")
+    print(f"Manual: {len(df_manual)} pares")
+
+    df_manual = df_manual.rename(columns={
+        "texto_A": "texto1",
+        "texto_B": "texto2",
+        "etiqueta": "label"
+    })
+
+    label_map = {
+        "plagio_alto": "cut",
+        "plagio_leve": "light",
+        "no_plagio": "non",
+        "cut": "cut",
+        "light": "light",
+        "non": "non"
+    }
+
+    df_manual["label"] = df_manual["label"].map(label_map)
+    df_manual = df_manual.dropna(subset=["label"])
+
+    columnas_esenciales = ["texto1", "texto2", "label"]
+    df_clough_clean = df_clough[columnas_esenciales].copy()
+    df_manual_clean = df_manual[columnas_esenciales].copy()
+
+    df_clough_clean["origen"] = "clough"
+    df_manual_clean["origen"] = "manual"
+
+    df_combined = pd.concat([df_clough_clean, df_manual_clean], ignore_index=True)
+
+    antes = len(df_combined)
+    df_combined = df_combined.drop_duplicates(subset=["texto1", "texto2"], keep="first")
+    despues = len(df_combined)
+
+    print(f"Duplicados eliminados: {antes - despues}")
+    print(f"Total combinado final: {despues}")
+
+    df_combined.to_csv("dataset_combined.csv", index=False, encoding="utf-8")
+    df_combined[columnas_esenciales].to_csv("dataset_combined_clean.csv", index=False, encoding="utf-8")
+
+    print("Archivos generados:")
+    print("dataset_combined.csv")
+    print("dataset_combined_clean.csv")
+
+    return df_combined
 
 if __name__ == "__main__":
-    main()
-    
+    build_clough_dataset()
+    merge_datasets()
