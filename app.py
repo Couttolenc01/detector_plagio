@@ -4,16 +4,17 @@ from sklearn.metrics.pairwise import cosine_similarity
 import joblib
 
 # ============================================================
-# Cargar modelos
+# Cargar modelos y umbrales
 # ============================================================
 @st.cache_resource
 def load_models():
     encoder = SentenceTransformer("sentence-transformers/all-roberta-large-v1")
     clf = joblib.load("modelo_plagio.pkl")
     le = joblib.load("label_encoder.pkl")
-    return encoder, clf, le
+    umbrales = joblib.load("umbrales_similitud.pkl")  # nuevo
+    return encoder, clf, le, umbrales
 
-encoder, clf, le = load_models()
+encoder, clf, le, umbrales = load_models()
 
 # ============================================================
 # Funciones auxiliares 
@@ -33,6 +34,40 @@ def jaccard_palabras(texto_a: str, texto_b: str) -> float:
     interseccion = len(palabras_a & palabras_b)
     union = len(palabras_a | palabras_b)
     return interseccion / union
+
+def ajustar_por_umbrales(etiqueta_modelo: str, sim: float) -> str:
+    """
+    Ajuste suave usando solo información aprendida del dataset.
+    No hay números escritos a mano, todo sale de umbrales_similitud.pkl
+    """
+    # Por si algo falla, devolver tal cual
+    if not isinstance(umbrales, dict):
+        return etiqueta_modelo
+
+    # Seguridad
+    if etiqueta_modelo not in umbrales:
+        return etiqueta_modelo
+
+    # Atajo: similitud baja => probablemente non
+    if "non" in umbrales:
+        non_p75 = umbrales["non"]["p75"]
+        if sim <= non_p75 and etiqueta_modelo != "non":
+            return "non"
+
+    # Ajuste entre light y cut si tenemos sus rangos
+    if "light" in umbrales and "cut" in umbrales:
+        cut_p75 = umbrales["cut"]["p75"]
+        light_p25 = umbrales["light"]["p25"]
+
+        # Si el modelo dice light pero la similitud es muy alta (zona típica de cut)
+        if etiqueta_modelo == "light" and sim >= cut_p75:
+            return "cut"
+
+        # Si el modelo dice cut pero la similitud cae en la zona baja típica de light
+        if etiqueta_modelo == "cut" and sim <= light_p25:
+            return "light"
+
+    return etiqueta_modelo
 
 # ============================================================
 # Predicción de plagio usando 5 FEATURES 
@@ -67,9 +102,12 @@ def predecir_plagio(texto_a, texto_b):
 
     # Predicción del modelo entrenado
     clase_idx = clf.predict(X)[0]
-    etiqueta = le.inverse_transform([clase_idx])[0]
+    etiqueta_modelo = le.inverse_transform([clase_idx])[0]
 
-    return porcentaje, etiqueta
+    # Ajuste con umbrales aprendidos
+    etiqueta_ajustada = ajustar_por_umbrales(etiqueta_modelo, sim)
+
+    return porcentaje, etiqueta_ajustada
 
 # ============================================================
 # Interfaz Streamlit
