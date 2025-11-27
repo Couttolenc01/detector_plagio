@@ -42,7 +42,7 @@ print("\n" + "+"*50)
 print("DETECTOR DE PLAGIO - roBERTa + VotingClassifier")
 print("+"*50 + "\n")
 
-df = pd.read_csv("dataset_plagio_manual.csv")
+df = pd.read_csv("dataset_combined_clean.csv")
 print(f"   Registros en dataset: {len(df)}")
 
 print("\n Distribución de etiquetas:")
