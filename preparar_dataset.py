@@ -2,8 +2,6 @@ import os
 import pandas as pd
 import glob
 
-# Construcción de dataset_clough.csv desde los archivos
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data2")
 INFO_FILE = os.path.join(DATA_DIR, "file_information.csv")
@@ -24,13 +22,14 @@ def build_clough_dataset():
     df_info = pd.read_csv(INFO_FILE)
     print(f"Archivos indexados: {len(df_info)}")
 
-    categorias_validas = {'non', 'light', 'cut', 'orig'}
-    categorias_encontradas = set(df_info['Category'].unique())
+    categorias_validas = {"non", "light", "cut", "orig"}
+    categorias_encontradas = set(df_info["Category"].unique())
 
     if not categorias_encontradas.issubset(categorias_validas):
         print("Advertencia: hay categorías inesperadas en file_information.csv")
 
-    originals = df_info[df_info['Category'] == 'orig'].copy()
+    # Filtrar originales
+    originals = df_info[df_info["Category"] == "orig"].copy()
 
     if len(originals) == 0:
         print("No se encontraron archivos 'orig'. Buscando orig_*.txt...")
@@ -65,13 +64,14 @@ def build_clough_dataset():
             if not ver_text:
                 continue
 
+            # OJO: aquí ya usamos los nombres que espera train_clasificador
             dataset_rows.append({
-                "texto1": orig_text,
-                "texto2": ver_text,
-                "label": ver_row["Category"],
+                "texto_A": orig_text,
+                "texto_B": ver_text,
+                "etiqueta": ver_row["Category"],  # non / light / cut
                 "task": task_id,
                 "file_orig": orig_filename,
-                "file_plag": ver_filename
+                "file_plag": ver_filename,
             })
 
     df_dataset = pd.DataFrame(dataset_rows)
@@ -79,6 +79,7 @@ def build_clough_dataset():
     print(f"dataset_clough.csv generado: {len(df_dataset)} pares")
 
     return df_dataset
+
 
 # Fusión con dataset manual
 
@@ -92,25 +93,26 @@ def merge_datasets():
     print(f"Clough: {len(df_clough)} pares")
     print(f"Manual: {len(df_manual)} pares")
 
-    df_manual = df_manual.rename(columns={
-        "texto_A": "texto1",
-        "texto_B": "texto2",
-        "etiqueta": "label"
-    })
-
+    # Asegurarnos de que el manual tiene las columnas correctas
+    # texto_A, texto_B, etiqueta (que ya las trae)
+    # Mapear etiquetas del manual a non/light/cut
     label_map = {
         "plagio_alto": "cut",
         "plagio_leve": "light",
         "no_plagio": "non",
         "cut": "cut",
         "light": "light",
-        "non": "non"
+        "non": "non",
     }
 
-    df_manual["label"] = df_manual["label"].map(label_map)
-    df_manual = df_manual.dropna(subset=["label"])
+    df_manual["etiqueta"] = df_manual["etiqueta"].map(label_map)
+    df_manual = df_manual.dropna(subset=["etiqueta"])
 
-    columnas_esenciales = ["texto1", "texto2", "label"]
+    # Asegurar mismo formato también en Clough
+    df_clough["etiqueta"] = df_clough["etiqueta"].map(label_map).fillna(df_clough["etiqueta"])
+
+    columnas_esenciales = ["texto_A", "texto_B", "etiqueta"]
+
     df_clough_clean = df_clough[columnas_esenciales].copy()
     df_manual_clean = df_manual[columnas_esenciales].copy()
 
@@ -120,20 +122,25 @@ def merge_datasets():
     df_combined = pd.concat([df_clough_clean, df_manual_clean], ignore_index=True)
 
     antes = len(df_combined)
-    df_combined = df_combined.drop_duplicates(subset=["texto1", "texto2"], keep="first")
+    df_combined = df_combined.drop_duplicates(subset=["texto_A", "texto_B"], keep="first")
     despues = len(df_combined)
 
     print(f"Duplicados eliminados: {antes - despues}")
     print(f"Total combinado final: {despues}")
 
+    # Guardar combinado completo
     df_combined.to_csv("dataset_combined.csv", index=False, encoding="utf-8")
-    df_combined[columnas_esenciales].to_csv("dataset_combined_clean.csv", index=False, encoding="utf-8")
+    # Guardar solo las columnas que usará train_clasificador
+    df_combined[columnas_esenciales].to_csv(
+        "dataset_combined_clean.csv", index=False, encoding="utf-8"
+    )
 
     print("Archivos generados:")
     print("dataset_combined.csv")
     print("dataset_combined_clean.csv")
 
     return df_combined
+
 
 if __name__ == "__main__":
     build_clough_dataset()
