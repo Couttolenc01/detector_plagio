@@ -3,6 +3,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 import joblib
@@ -106,16 +107,32 @@ y = le.fit_transform(df["etiqueta"])
 # 6. Train/test split
 # -----------------------------
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.3, random_state=42
+    X, y, test_size=0.3, random_state=42, stratify=y
 )
 
 # -----------------------------
-# 7. Entrenar modelo
+# 7. Definir modelos base
 # -----------------------------
-clf = LogisticRegression(max_iter=1000)  # más iteraciones por seguridad
+log_reg = LogisticRegression(
+    max_iter=1000
+)
+
+rf = RandomForestClassifier(
+    n_estimators=300,
+    max_depth=None,
+    random_state=42
+)
+
+# Ensamble: usa ambos modelos para decidir
+clf = VotingClassifier(
+    estimators=[("logreg", log_reg), ("rf", rf)],
+    voting="soft"  # usa probabilidades de ambos
+)
+
+# Entrenar ensamble
 clf.fit(X_train, y_train)
 
-print("Accuracy en test:", clf.score(X_test, y_test))
+print("Accuracy en test (VotingClassifier):", clf.score(X_test, y_test))
 
 # -----------------------------
 # 8. Guardar modelo y LabelEncoder
@@ -123,7 +140,6 @@ print("Accuracy en test:", clf.score(X_test, y_test))
 joblib.dump(clf, "modelo_plagio.pkl")
 joblib.dump(le, "label_encoder.pkl")
 
-print("Modelo guardado como modelo_plagio.pkl")
+print("Modelo (VotingClassifier) guardado como modelo_plagio.pkl")
 print("LabelEncoder guardado como label_encoder.pkl")
 print("Features usadas:", feature_cols)
-print("Número de features que espera el modelo:", clf.n_features_in_)
