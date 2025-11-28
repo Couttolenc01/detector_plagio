@@ -121,8 +121,8 @@ git clone <URL_DEL_REPOSITORIO>
 
 - pip install -r requirements.txt
 
-- python train_clasificador.py
+- pip preparar_dataset.py
 
-- python evaluar_modelo.py
+- python train_clasificador.py
 
 - streamlit run app.py
