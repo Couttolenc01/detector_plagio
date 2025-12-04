@@ -88,6 +88,8 @@ Ejecutar con:
 ```bash
 streamlit run app.py
 
+---
+
 El dataset final usado para entrenar al modelo es:
 
 dataset_combined_clean.csv
