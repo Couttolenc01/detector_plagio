@@ -1,128 +1,158 @@
-# 🧠 Detector de Plagio con Embeddings y Clasificación Supervisada
+# 🧠 Detector de Plagio con Embeddings (RoBERTa) + Clasificación Supervisada
 
-Este proyecto implementa un **detector de plagio de texto** 
-El sistema analiza dos textos y clasifica el nivel de plagio en una de tres categorías:
+Este proyecto implementa un **sistema de detección automática de plagio** que compara dos textos y clasifica su nivel de similitud en tres categorías:
 
-- `plagio_alto`
-- `plagio_leve`
-- `no_plagio`  
-  *(incluye casos de “ruido”, donde los textos no tienen ninguna relación entre sí)*
+- **cut** → *plagio alto*  
+- **light** → *plagio leve*  
+- **non** → *no plagio*  
 
-El proyecto también incluye una **interfaz web basada en Streamlit** para facilitar su uso.
-
----
-
-## ⚙️ ¿Cómo funciona el modelo?
-
-El pipeline del sistema tiene cuatro etapas principales:
-
-### 1️⃣ Embeddings semánticos (RoBERTa / BERT)
-
-Cada texto se convierte en un vector numérico utilizando:
-SentenceTransformer(“sentence-transformers/all-roberta-large-v1”)
-
-Estos embeddings capturan el **significado** del texto y permiten comparar semánticamente dos oraciones o párrafos completos.
-
-La similitud entre ambos embeddings se calcula usando la **similitud coseno**, que indica qué tan parecidos son los textos a nivel de significado.
+El sistema utiliza **embeddings semánticos basados en RoBERTa**, características léxicas adicionales y un modelo híbrido supervisado (Logistic Regression + Random Forest).  
+También incluye una **interfaz web desarrollada con Streamlit** para facilitar su uso.
 
 ---
 
-### 2️⃣ Features utilizadas para la clasificación
+# ⚙️ ¿Cómo funciona el modelo?
 
-A partir de los textos y de sus embeddings, se calculan **5 features**:
-
-1. **sim_coseno**  
-   - Similitud entre embeddings.  
-   - Mientras más alto, más parecidos en significado.
-
-2. **len_ratio**  
-   - Relación entre la longitud del texto A y B.  
-   - Útil para detectar cuando un texto es una versión recortada/parafraseada del otro.
-
-3. **diff_len_chars**  
-   - Diferencia absoluta en número de caracteres.
-
-4. **diff_len_words**  
-   - Diferencia en número de palabras.
-
-5. **jaccard_palabras**  
-   - Similaridad entre conjuntos de palabras.  
-   - Mide qué tantas palabras comparten.
-
-Estas características juntas hacen que el modelo pueda identificar desde plagio literal hasta paráfrasis.
+El pipeline del detector tiene cuatro etapas principales:
 
 ---
 
-### 3️⃣ Clasificador supervisado
+## 1️⃣ Generación de embeddings semánticos (RoBERTa Large)
 
-Se utiliza un modelo de **Regresión Logística (LogisticRegression)** para clasificar los pares en:
+Los textos se transforman en vectores numéricos utilizando:
 
-- `plagio_alto`
-- `plagio_leve`
-- `no_plagio`
+sentence-transformers/all-roberta-large-v1
+---
 
-El modelo entrena con los 5 features mencionados y con un conjunto balanceado de ejemplos reales y casos de “ruido”.
+Los embeddings permiten capturar similitud semántica profunda, detectando:
 
-Los componentes entrenados se guardan como:
+- paráfrasis  
+- plagio estructural  
+- similitudes conceptuales aun con palabras distintas  
 
-- `modelo_plagio.pkl`
-- `label_encoder.pkl`
+La similitud entre textos se calcula con **similitud del coseno**.
 
 ---
 
-### 4️⃣ Interfaz web con Streamlit
+## 2️⃣ Extracción de 7 features adicionales
 
-La aplicación (`app.py`) permite:
+Además del vector semántico, el modelo calcula **7 características léxicas/estadísticas**:
 
-- Ingresar dos textos.
-- Analizar su similitud semántica.
-- Mostrar:
-  - Porcentaje aproximado de similitud.
-  - Clasificación final del nivel de plagio.
+| Feature | Descripción |
+|--------|-------------|
+| **sim_coseno** | Similitud semántica entre embeddings |
+| **jaccard_words** | Coincidencia entre palabras |
+| **jaccard_bigrams** | Coincidencia entre pares de palabras |
+| **overlap_coef** | Proporción de vocabulario compartido |
+| **len_ratio** | Razón entre longitudes de los textos |
+| **jaccard_char_bigrams** | Similitud entre bigramas de caracteres |
+| **vocab_ratio** | Comparación entre vocabularios únicos |
 
-Se ejecuta con:
+Estas features refuerzan la clasificación, ya que los embeddings pueden agrupar textos demasiado similares aunque sean paráfrasis.
+
+---
+
+## 3️⃣ Clasificador supervisado: Logistic Regression + Random Forest
+
+El modelo final es un ensamble mediante:
+
+- **LogisticRegression**  
+- **RandomForestClassifier**  
+
+con **votación suave (soft voting)**.
+
+Este enfoque mejora la robustez al clasificar entre plagio leve y alto, categorías que pueden ser difíciles de separar con embeddings únicamente.
+
+El modelo guardado incluye:
+
+modelo_plagio_rf.pkl
+	•	encoder RoBERTa
+	•	classifier (VotingClassifier)
+	•	label_encoder
+	•	feature_cols
+	•	umbrales estadísticos
+
+---
+
+## 4️⃣ Interfaz web con Streamlit
+
+La aplicación web (`app.py`) permite:
+
+- Ingresar dos textos  
+- Calcular similitud semántica  
+- Clasificar automáticamente el nivel de plagio  
+- Mostrar explicaciones para el usuario  
+
+Ejecutar con:
+
+```bash
 streamlit run app.py
 
----
+El dataset final usado para entrenar al modelo es:
 
-## 📚 Dataset utilizado
+dataset_combined_clean.csv
 
-El dataset se encuentra en:
-dataset_plagio_manual.csv
+Contiene 300 pares de textos, divididos en:
+	•	90 casos de cut (plagio alto)
+	•	90 casos de light (plagio leve)
+	•	120 casos de non (no plagio)
 
-Contiene **120 pares de textos**, distribuidos así:
-
-- **30** casos de `plagio_alto`
-- **30** casos de `plagio_leve`
-- **60** casos de `no_plagio`
-
-Dentro de los casos `no_plagio` se incluyen también ejemplos de **ruido**:  
-pares donde los textos NO tienen relación alguna.  
-Esto ayuda a que el modelo sea más robusto y no se confunda frente a textos arbitrarios.
+¿Cómo se generó?
+	•	Se recopilaron textos originales de Internet.
+	•	Se generaron variantes usando modelos de IA (ChatGPT / DeepSeek):
+	•	plagio alto
+	•	plagio leve
+	•	no plagio (totalmente distinto)
+	•	También se generaron textos completamente creados por IA.
 
 Columnas del dataset:
 
-- `texto_A`
-- `texto_B`
-- `etiqueta`
+Columna
+Contenido
+texto1
+Texto original
+texto2
+Texto sospechoso
+label
+Clase objetivo (cut/light/non)
 
----
+🧪 Resultados del modelo
 
-## 🖥️ Cómo correr el proyecto
+Al entrenar con los 300 pares se obtuvieron los siguientes resultados:
+	•	Accuracy: 86.67%
+	•	F1-score ponderado: 86.73%
+	•	Validación cruzada (5-fold): 0.7775 ± 0.0336
 
-### 1️⃣ Clonar el repositorio
+El modelo:
+	•	distingue muy bien casos non
+	•	confunde ocasionalmente light ↔ cut, lo cual es esperado debido a su cercanía semántica
 
-```bash
+--- 
+
+🖥️ Cómo ejecutar el proyecto
+
+1️⃣ Clonar el repositorio
 git clone <URL_DEL_REPOSITORIO>
-- cd detector_plagio
+cd detector_plagio
 
-- python3 -m venv venv
- source venv/bin/activate
+2️⃣ Crear y activar el entorno virtual
+macOS / Linux:
+python3 -m venv venv
+source venv/bin/activate
 
-- pip install -r requirements.txt
+Windows:
+python -m venv venv
+venv\Scripts\activate
 
-- pip preparar_dataset.py
+3️⃣ Instalar dependencias
+pip install -r requirements.txt
 
-- python train_clasificador.py
+4️⃣ Entrenar el modelo
+python train_clasificador.py
 
-- streamlit run app.py
+Esto genera:
+modelo_plagio_rf.pkl
+
+5️⃣ Ejecutar la aplicación web
+streamlit run app.py
+
